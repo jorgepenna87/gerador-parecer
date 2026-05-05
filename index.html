@@ -4,8 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador de Parecer Técnico</title>
-<script src="https://cdn.jsdelivr.net/npm/docx@9/build/index.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/file-saver@2/dist/FileSaver.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+<script>
+  // Fallback: se unpkg falhar, tenta jsdelivr
+  window.addEventListener('error', function(e) {
+    if (e.target && e.target.tagName === 'SCRIPT' && !window._docxFallbackTried) {
+      window._docxFallbackTried = true;
+      if (typeof docx === 'undefined') {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js';
+        document.head.appendChild(s);
+      }
+      if (typeof saveAs === 'undefined') {
+        const s2 = document.createElement('script');
+        s2.src = 'https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js';
+        document.head.appendChild(s2);
+      }
+    }
+  }, true);
+</script>
 <style>
 :root {
   --bg: #070B0B;
@@ -1124,6 +1142,15 @@ input[type="date"] { color-scheme: dark; }
 // ========================
 const STORAGE_KEY = 'parecer_v1_draft';
 
+// Global error handler — exibe erros na tela em vez de página em branco
+window.addEventListener('error', function(e) {
+  if (e.target && e.target.tagName === 'SCRIPT') return; // ignora falha de script (já tem fallback)
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#FF6B6B;color:#fff;padding:12px;font:13px monospace;z-index:99999;white-space:pre-wrap';
+  div.textContent = 'ERRO: ' + (e.message || e) + (e.filename ? '\n' + e.filename + ':' + e.lineno : '');
+  document.body && document.body.appendChild(div);
+});
+
 const state = {
   currentStep: 1,
   totalSteps: 5,
@@ -1777,6 +1804,20 @@ function resetAll() {
 
 async function generateDOCX() {
   collectFormData();
+
+  // Sanity check: bibliotecas carregadas?
+  if (typeof docx === 'undefined') {
+    alert('A biblioteca docx.js não carregou. Possíveis causas:\n\n' +
+          '1) Você está rodando em ambiente que bloqueia CDN externo (preview do Claude, sandbox restrito)\n' +
+          '2) Sem internet\n\n' +
+          'SOLUÇÃO: baixe este HTML e abra direto no navegador (duplo-clique no arquivo).');
+    return;
+  }
+  if (typeof saveAs === 'undefined') {
+    alert('A biblioteca file-saver não carregou. Baixe este HTML e abra direto no navegador.');
+    return;
+  }
+
   // Validação mínima
   if (!state.data.reclamante || !state.data.reclamada) {
     alert('Preencha pelo menos Reclamante e Reclamada (passo 2).');
@@ -1812,7 +1853,6 @@ async function generateDOCX() {
     btn.textContent = '↓ Baixar DOCX';
   }
 }
-
 // ========================
 // GERAÇÃO DE DOCX — formato exato do modelo do perito
 // (cabeçalhos azul-escuro #202050, blocos cinza #E7E6E6, Aptos 10pt)
@@ -1838,10 +1878,25 @@ function tr(text, opts = {}) {
   });
 }
 
+// Parser de texto rico — interpreta **negrito** (Markdown-style)
+// Para uma única linha. Retorna array de TextRuns.
+function parseRichText(texto, baseOpts = {}) {
+  if (!texto) return [tr('', baseOpts)];
+  const runs = [];
+  const partes = texto.split(/(\*\*[^*]+\*\*)/g);
+  partes.forEach(parte => {
+    if (!parte) return;
+    const isBold = parte.startsWith('**') && parte.endsWith('**');
+    const t = isBold ? parte.slice(2, -2) : parte;
+    runs.push(tr(t, { ...baseOpts, bold: isBold || baseOpts.bold }));
+  });
+  return runs.length ? runs : [tr(texto, baseOpts)];
+}
+
 // Header de seção (azul escuro com texto branco)
 function headerSecao(titulo) {
   return new docx.Paragraph({
-    spacing: { before: 120, after: 120 },
+    spacing: { before: 240, after: 120 },
     alignment: docx.AlignmentType.LEFT,
     border: {
       top: { style: 'single', size: 4, color: COR_HEADER_BORDA, space: 1 },
@@ -1856,19 +1911,39 @@ function headerSecao(titulo) {
 
 // Parágrafo vazio separador
 function paragrafoVazio() {
-  return new docx.Paragraph({
-    indent: { firstLine: 851 },
-    children: [],
-  });
+  return new docx.Paragraph({ children: [] });
 }
 
-// Parágrafo normal (texto corrido com recuo de primeira linha)
-function paragrafoNormal(texto) {
-  return new docx.Paragraph({
+// Parágrafo normal (texto corrido com recuo de primeira linha) — aceita **negrito**
+// Se o texto tiver \n, retorna array de parágrafos.
+function paragrafoNormal(texto, opts = {}) {
+  const linhas = (texto || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (linhas.length === 0) {
+    return new docx.Paragraph({ children: [tr('', opts)] });
+  }
+  if (linhas.length === 1) {
+    return new docx.Paragraph({
+      indent: { firstLine: 851 },
+      alignment: docx.AlignmentType.JUSTIFIED,
+      spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 80 },
+      children: parseRichText(linhas[0], opts),
+    });
+  }
+  // múltiplas linhas: retorna array
+  return linhas.map(l => new docx.Paragraph({
     indent: { firstLine: 851 },
     alignment: docx.AlignmentType.JUSTIFIED,
-    spacing: { line: 360, lineRule: docx.LineRuleType.AUTO },
-    children: [tr(texto)],
+    spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 80 },
+    children: parseRichText(l, opts),
+  }));
+}
+
+// Bullet point — usado no resumo de tópicos da verba
+function bulletPoint(texto) {
+  return new docx.Paragraph({
+    numbering: { reference: 'topicos', level: 0 },
+    spacing: { line: 300, lineRule: docx.LineRuleType.AUTO, after: 40 },
+    children: parseRichText(texto),
   });
 }
 
@@ -1876,6 +1951,7 @@ function paragrafoNormal(texto) {
 function itemVerba(titulo) {
   return new docx.Paragraph({
     numbering: { reference: 'verbas', level: 0 },
+    spacing: { before: 200, after: 120 },
     children: [tr(titulo, { bold: true })],
   });
 }
@@ -1891,13 +1967,12 @@ function blocoCitacaoHeader(titulo) {
       right: { style: 'single', size: 4, color: COR_CINZA, space: 4 },
     },
     shading: { type: docx.ShadingType.CLEAR, color: 'auto', fill: COR_CINZA },
-    children: [tr(titulo, { bold: true, italics: true, size: 18 })], // 9pt
+    children: [tr(titulo, { bold: true, italics: true, size: 18 })],
   });
 }
 
 // Bloco de citação cinza — texto (italic, sem bold)
 function blocoCitacaoTexto(texto) {
-  // Quebra em parágrafos por \n preservando estilo cinza em cada um
   const linhas = (texto || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (linhas.length === 0) linhas.push('');
   return linhas.map(linha => new docx.Paragraph({
@@ -1910,11 +1985,11 @@ function blocoCitacaoTexto(texto) {
       right: { style: 'single', size: 4, color: COR_CINZA, space: 4 },
     },
     shading: { type: docx.ShadingType.CLEAR, color: 'auto', fill: COR_CINZA },
-    children: [tr(linha, { italics: true, size: 18 })],
+    children: parseRichText(linha, { italics: true, size: 18 }),
   }));
 }
 
-// Linha de tabela (rótulo + valor) — padrão dos blocos DADOS PROCESSUAIS / CONTRATUAIS
+// Linha de tabela (rótulo + valor)
 function linhaTabela(rotulo, valor, larguraRotulo, larguraValor) {
   const cellMargins = { top: 80, bottom: 80, left: 108, right: 108 };
   return new docx.TableRow({
@@ -1950,6 +2025,65 @@ function tabelaDados(linhas, larguraRotulo, larguraValor) {
   });
 }
 
+// Converte dataURL → Uint8Array pra docx.ImageRun
+function dataUrlToBytes(dataUrl) {
+  if (!dataUrl) return null;
+  const base64 = dataUrl.split(',')[1];
+  if (!base64) return null;
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// Cria parágrafo com imagem centralizada, preservando proporção
+async function paragrafoImagem(dataUrl) {
+  const bytes = dataUrlToBytes(dataUrl);
+  if (!bytes) return null;
+
+  // Detecta tipo da imagem a partir do MIME do dataURL
+  let tipo = 'png';
+  if (/^data:image\/(jpeg|jpg)/i.test(dataUrl)) tipo = 'jpg';
+  else if (/^data:image\/png/i.test(dataUrl)) tipo = 'png';
+  else if (/^data:image\/gif/i.test(dataUrl)) tipo = 'gif';
+  else if (/^data:image\/bmp/i.test(dataUrl)) tipo = 'bmp';
+
+  // Mede dimensões reais da imagem pra preservar proporção
+  let width = 500, height = 300;
+  try {
+    const dims = await measureImage(dataUrl);
+    if (dims && dims.w > 0 && dims.h > 0) {
+      const maxW = 540; // largura útil em px (~ pol page width - margens)
+      const ratio = Math.min(maxW / dims.w, 1);
+      width = Math.round(dims.w * ratio);
+      height = Math.round(dims.h * ratio);
+    }
+  } catch (e) {
+    // se não conseguir medir, usa fallback
+  }
+
+  return new docx.Paragraph({
+    alignment: docx.AlignmentType.CENTER,
+    spacing: { before: 120, after: 120 },
+    children: [new docx.ImageRun({
+      data: bytes,
+      transformation: { width, height },
+      type: tipo,
+    })],
+  });
+}
+
+// Mede dimensões reais (px) da imagem usando elemento <img>
+function measureImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    if (typeof Image === 'undefined') return resolve(null);
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 // Data por extenso em pt-BR
 function dataPorExtenso(isoOrEmpty) {
   let d;
@@ -1965,7 +2099,6 @@ function dataPorExtenso(isoOrEmpty) {
 
 // Calcula prescrição (5 anos antes do ajuizamento) caso não desligada
 function prescricaoLabel(data) {
-  if (data.prescricao_nao_aplica) return 'Não se aplica';
   if (data.prescricao_marco) return data.prescricao_marco;
   if (data.ajuizamento) {
     const partes = data.ajuizamento.split('-');
@@ -1987,33 +2120,57 @@ function fmtData(iso) {
   return `${p[2]}/${p[1]}/${p[0]}`;
 }
 
+// Detecta se uma string parece ser uma lista de tópicos (linhas curtas com ":")
+// Se sim, gera bullets; se não, gera parágrafos normais.
+function topicosParaBullets(texto) {
+  if (!texto || !texto.trim()) return [];
+  const linhas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return linhas.map(linha => bulletPoint(linha));
+}
+
+// Adiciona bloco(s) ao array — aceita item único ou array
+function push(arr, item) {
+  if (item == null) return;
+  if (Array.isArray(item)) item.forEach(x => arr.push(x));
+  else arr.push(item);
+}
+
+// Adiciona bloco(s) ao array — aceita item único ou array
 // Constrói a sequência completa de blocos do body
-function montarBody(data) {
+async function montarBody(data) {
   const blocos = [];
 
-  // Título "PARECER TÉCNICO" centralizado, bold, fonte maior
+  // ===== TÍTULO PARECER TÉCNICO (caixa decorativa centralizada) =====
   blocos.push(new docx.Paragraph({
     alignment: docx.AlignmentType.CENTER,
-    spacing: { before: 240, after: 240 },
+    spacing: { before: 120, after: 360 },
+    border: {
+      top: { style: 'single', size: 12, color: COR_HEADER, space: 6 },
+      bottom: { style: 'single', size: 12, color: COR_HEADER, space: 6 },
+      left: { style: 'single', size: 12, color: COR_HEADER, space: 6 },
+      right: { style: 'single', size: 12, color: COR_HEADER, space: 6 },
+    },
+    shading: { type: docx.ShadingType.CLEAR, color: 'auto', fill: COR_HEADER },
     children: [new docx.TextRun({
       text: 'PARECER TÉCNICO',
-      font: FONTE, bold: true, size: 32, color: COR_HEADER,
+      font: FONTE, bold: true, size: 36, color: COR_BRANCO,
     })],
   }));
 
   // ===== DADOS PROCESSUAIS =====
   blocos.push(headerSecao('DADOS PROCESSUAIS'));
-  const linhasProc = [
-    ['Autos principais', data.autos],
-    ['Cumprimento de sentença', data.autos],
-    ['Juízo', [data.juizo, data.orgao].filter(Boolean).join(' — ')],
-    ['Reclamante', data.reclamante],
-    ['Reclamada', data.reclamada],
-    ['Ajuizamento', fmtData(data.ajuizamento)],
-    ['Prescrição', prescricaoLabel(data)],
-  ];
+  const linhasProc = [['Autos principais', data.autos]];
+  // Suprimir cumprimento se igual aos autos (não duplicar)
+  // (deixei de fora porque na prática sempre é igual)
+  linhasProc.push(['Juízo', [data.juizo, data.orgao].filter(Boolean).join(' — ')]);
+  linhasProc.push(['Reclamante', data.reclamante]);
+  linhasProc.push(['Reclamada', data.reclamada]);
+  linhasProc.push(['Ajuizamento', fmtData(data.ajuizamento)]);
+  // Suprimir prescrição se "não se aplica"
+  if (!data.prescricao_nao_aplica) {
+    linhasProc.push(['Prescrição', prescricaoLabel(data)]);
+  }
   blocos.push(tabelaDados(linhasProc, 3119, 5375));
-  blocos.push(paragrafoVazio());
 
   // ===== DADOS CONTRATUAIS =====
   if (data.admissao || data.rescisao || data.modalidade) {
@@ -2024,23 +2181,19 @@ function montarBody(data) {
       ['Modalidade', data.modalidade],
     ];
     blocos.push(tabelaDados(linhasContr, 3261, 5233));
-    blocos.push(paragrafoVazio());
   }
 
   // ===== DOS PEDIDOS DEFERIDOS =====
   blocos.push(headerSecao('DOS PEDIDOS DEFERIDOS'));
-  blocos.push(paragrafoVazio());
 
   data.verbas.forEach(v => {
-    blocos.push(itemVerba(v.titulo || 'VERBA SEM TÍTULO'));
+    blocos.push(itemVerba((v.titulo || 'VERBA SEM TÍTULO').toUpperCase()));
     if (v.sentenca && v.sentenca.trim()) {
       blocos.push(blocoCitacaoHeader('SENTENÇA'));
       blocoCitacaoTexto(v.sentenca).forEach(p => blocos.push(p));
     }
-    if (v.topicos && v.topicos.trim()) {
-      blocos.push(paragrafoNormal(v.topicos));
-    }
-    blocos.push(paragrafoVazio());
+    // Tópicos como bullets reais
+    topicosParaBullets(v.topicos).forEach(p => blocos.push(p));
   });
 
   // ===== ATUALIZAÇÃO MONETÁRIA (modo completo) =====
@@ -2050,12 +2203,7 @@ function montarBody(data) {
       blocos.push(blocoCitacaoHeader('SENTENÇA'));
       blocoCitacaoTexto(data.atualizacao_texto).forEach(p => blocos.push(p));
     }
-    if (data.atualizacao_topicos && data.atualizacao_topicos.trim()) {
-      data.atualizacao_topicos.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(linha => {
-        blocos.push(paragrafoNormal('• ' + linha));
-      });
-    }
-    blocos.push(paragrafoVazio());
+    topicosParaBullets(data.atualizacao_topicos).forEach(p => blocos.push(p));
   }
 
   // ===== CUSTAS PROCESSUAIS (modo completo) =====
@@ -2070,33 +2218,44 @@ function montarBody(data) {
     if (data.custas_responsavel) linhasCustas.push(['Responsável', data.custas_responsavel]);
     if (data.custas_base) linhasCustas.push(['Base de cálculo', data.custas_base]);
     if (linhasCustas.length) {
+      blocos.push(paragrafoVazio());
       blocos.push(tabelaDados(linhasCustas, 3119, 5375));
     }
-    blocos.push(paragrafoVazio());
   }
 
   // ===== IMPUGNAÇÕES (modo completo) =====
   if (data.modo === 'completo' && data.impugnacoes && data.impugnacoes.length) {
     blocos.push(headerSecao('DAS IMPUGNAÇÕES'));
-    blocos.push(paragrafoVazio());
-    data.impugnacoes.forEach(i => {
+    for (const i of data.impugnacoes) {
+      // Título da impugnação (header médio)
       blocos.push(new docx.Paragraph({
-        children: [tr(i.titulo || 'IMPUGNAÇÃO', { bold: true })],
+        spacing: { before: 240, after: 120 },
+        children: [tr((i.titulo || 'IMPUGNAÇÃO').toUpperCase(), { bold: true, size: 22 })],
       }));
+      // Citação da sentença em bloco cinza
       if (i.sentenca && i.sentenca.trim()) {
         blocos.push(blocoCitacaoHeader('SENTENÇA / DECISÃO'));
         blocoCitacaoTexto(i.sentenca).forEach(p => blocos.push(p));
       }
-      if (i.argumento && i.argumento.trim()) {
-        blocos.push(paragrafoNormal(i.argumento));
+      // Imagem (print do PJeCalc), se houver
+      if (i.img_data) {
+        const pImg = await paragrafoImagem(i.img_data);
+        if (pImg) blocos.push(pImg);
       }
-      blocos.push(paragrafoVazio());
-    });
+      // Argumento jurídico (com suporte a **negrito**)
+      if (i.argumento && i.argumento.trim()) {
+        // Quebra em parágrafos por linha em branco
+        const paragrafos = i.argumento.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+        paragrafos.forEach(p => {
+          push(blocos, paragrafoNormal(p));
+        });
+      }
+    }
   }
 
   // ===== CONCLUSÃO =====
   blocos.push(headerSecao('CONCLUSÃO'));
-  blocos.push(paragrafoNormal(
+  push(blocos, paragrafoNormal(
     'Encerrado os trabalhos, com a demonstração dos cálculos e dos critérios de apuração das verbas deferidas no julgado.'
   ));
   blocos.push(paragrafoVazio());
@@ -2106,31 +2265,31 @@ function montarBody(data) {
   const dataExt = dataPorExtenso(data.perito_data);
   blocos.push(new docx.Paragraph({
     indent: { firstLine: 851 },
-    spacing: { before: 240, after: 240 },
+    spacing: { before: 240, after: 480 },
     children: [tr(`${cidade}, ${dataExt}.`)],
   }));
-  blocos.push(paragrafoVazio());
-  blocos.push(paragrafoVazio());
 
-  // ===== ASSINATURA =====
+  // ===== ASSINATURA (sem linha de underscore — só nome bold + documento bold) =====
   blocos.push(new docx.Paragraph({
     alignment: docx.AlignmentType.CENTER,
-    children: [tr('_______________________________')],
-  }));
-  blocos.push(new docx.Paragraph({
-    alignment: docx.AlignmentType.CENTER,
+    spacing: { before: 480, after: 0 },
     children: [tr(data.perito_nome || 'NOME DO PERITO', { bold: true })],
   }));
-  blocos.push(new docx.Paragraph({
-    alignment: docx.AlignmentType.CENTER,
-    children: [tr(data.perito_doc || '', { bold: true })],
-  }));
+  if (data.perito_doc) {
+    blocos.push(new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      children: [tr(data.perito_doc, { bold: true })],
+    }));
+  }
 
   return blocos;
 }
 
 // Constrói o blob do DOCX
 async function buildDocxBlob(data) {
+  const cidade = data.perito_cidade || 'Rio de Janeiro';
+  const peritoNome = data.perito_nome || 'PERITO';
+
   const doc = new docx.Document({
     creator: 'Gerador de Parecer Técnico',
     title: `Parecer Técnico — ${data.reclamante}`,
@@ -2146,28 +2305,66 @@ async function buildDocxBlob(data) {
       },
     },
     numbering: {
-      config: [{
-        reference: 'verbas',
-        levels: [{
-          level: 0,
-          format: docx.LevelFormat.DECIMAL,
-          text: '%1.',
-          alignment: docx.AlignmentType.START,
-          style: {
-            paragraph: { indent: { left: 720, hanging: 360 } },
-            run: { font: FONTE, size: 20, bold: true },
-          },
-        }],
-      }],
+      config: [
+        {
+          reference: 'verbas',
+          levels: [{
+            level: 0,
+            format: docx.LevelFormat.DECIMAL,
+            text: '%1.',
+            alignment: docx.AlignmentType.START,
+            style: {
+              paragraph: { indent: { left: 720, hanging: 360 } },
+              run: { font: FONTE, size: 20, bold: true },
+            },
+          }],
+        },
+        {
+          reference: 'topicos',
+          levels: [{
+            level: 0,
+            format: docx.LevelFormat.BULLET,
+            text: '\u2022',
+            alignment: docx.AlignmentType.START,
+            style: {
+              paragraph: { indent: { left: 1440, hanging: 360 } },
+              run: { font: FONTE, size: 20 },
+            },
+          }],
+        },
+      ],
     },
     sections: [{
       properties: {
         page: {
           size: { width: 11906, height: 16838 }, // A4
-          margin: { top: 2410, right: 1701, bottom: 1418, left: 1701 },
+          margin: { top: 2410, right: 1701, bottom: 1418, left: 1701, header: 720, footer: 720 },
         },
       },
-      children: montarBody(data),
+      headers: {
+        default: new docx.Header({
+          children: [new docx.Paragraph({
+            alignment: docx.AlignmentType.RIGHT,
+            border: {
+              bottom: { style: 'single', size: 6, color: COR_HEADER, space: 4 },
+            },
+            children: [
+              tr('Parecer Técnico — Liquidação de Sentença', { size: 16, color: '7A7A7A' }),
+            ],
+          })],
+        }),
+      },
+      footers: {
+        default: new docx.Footer({
+          children: [new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            children: [
+              tr(`${peritoNome}`, { size: 16, color: '7A7A7A' }),
+            ],
+          })],
+        }),
+      },
+      children: await montarBody(data),
     }],
   });
 
