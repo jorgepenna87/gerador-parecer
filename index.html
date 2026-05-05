@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador de Parecer Técnico</title>
+<script src="https://cdn.jsdelivr.net/npm/docx@9/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2/dist/FileSaver.min.js"></script>
+<style>
+:root {
+  --bg: #070B0B;
+  --surface: #0E1616;
+  --surface2: #142020;
+  --border: #1E3030;
+  --border-strong: #2A3F3F;
+  --cyan: #2DFFD4;
+  --cyan-dim: #14998A;
+  --cyan-soft: #0a665b;
+  --text: #E6F7F2;
+  --text-strong: #FFFFFF;
+  --muted: #7A9994;
+  --muted-soft: #5C7A75;
+  --warning: #FFB84D;
+  --danger: #FF6B6B;
+  --success: #2DFFD4;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.app { max-width: 880px; margin: 0 auto; padding: 0 16px 80px; }
+
+/* ====== HEADER ====== */
+.header {
+  padding: 24px 0 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  position: relative;
+}
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-strong);
+}
+.header .sub {
+  font-size: 12px;
+  color: var(--cyan-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+.autosave {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted-soft);
+  font-family: ui-monospace, monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.autosave.saved { color: var(--cyan-dim); }
+.autosave .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted-soft);
+  display: inline-block;
+}
+.autosave.saved .dot { background: var(--cyan); }
+
+/* ====== CONTINUACAO BANNER ====== */
+.continue-banner {
+  background: linear-gradient(180deg, var(--surface2) 0%, var(--surface) 100%);
+  border: 1px solid var(--cyan-dim);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  display: none;
+}
+.continue-banner.show { display: block; }
+.continue-banner h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-bottom: 4px;
+}
+.continue-banner p {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.continue-banner .btns {
+  display: flex;
+  gap: 8px;
+}
+.continue-banner button {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.continue-banner button.primary {
+  background: var(--cyan);
+  color: var(--bg);
+  border-color: var(--cyan);
+}
+.continue-banner button:hover { border-color: var(--cyan-dim); }
+.continue-banner button.primary:hover {
+  background: var(--cyan-dim);
+  border-color: var(--cyan-dim);
+}
+
+/* ====== STEPPER ====== */
+.stepper {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 8px 0;
+}
+.step-dot {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+.step-dot.active { background: var(--cyan); }
+.step-dot.done { background: var(--cyan-dim); }
+.step-meta {
+  font-size: 11px;
+  color: var(--muted-soft);
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+/* ====== STEP ====== */
+.step { display: none; }
+.step.active { display: block; }
+.step h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.25;
+  margin-bottom: 8px;
+}
+.step .lead {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.55;
+}
+
+/* ====== TEACH BOX ====== */
+.teach {
+  background: var(--surface);
+  border-left: 3px solid var(--cyan);
+  border-radius: 4px 8px 8px 4px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+}
+.teach strong { color: var(--cyan); }
+.teach .label {
+  display: inline-block;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 1px;
+  color: var(--cyan-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* ====== ALERT BOXES ====== */
+.alert {
+  border-radius: 4px 8px 8px 4px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.alert .label {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.alert.warning {
+  background: rgba(255, 184, 77, 0.08);
+  border: 1px solid var(--warning);
+  border-left: 3px solid var(--warning);
+}
+.alert.warning .label { color: var(--warning); }
+.alert.success {
+  background: rgba(45, 255, 212, 0.06);
+  border: 1px solid var(--cyan-dim);
+  border-left: 3px solid var(--cyan-dim);
+}
+.alert.success .label { color: var(--cyan-dim); }
+
+/* ====== FORM ====== */
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.field .hint {
+  font-size: 12px;
+  color: var(--muted-soft);
+  margin-top: 4px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="number"],
+input[type="date"],
+textarea,
+select {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--cyan-dim);
+}
+textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
+input[type="date"] { color-scheme: dark; }
+
+/* Campo "amarelo" — não extraído pelo parser, precisa atenção */
+.field.unfilled input,
+.field.unfilled textarea {
+  border-color: var(--warning);
+  background: rgba(255, 184, 77, 0.05);
+}
+.field.unfilled label::after {
+  content: '  ⚠ não extraído — preencha manualmente';
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 400;
+  font-family: ui-monospace, monospace;
+  margin-left: 6px;
+}
+
+/* ====== OPTIONS (radio cards) ====== */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.opt:hover { border-color: var(--border-strong); }
+.opt.selected {
+  border-color: var(--cyan);
+  background: var(--surface2);
+}
+.opt-radio {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+}
+.opt.selected .opt-radio { border-color: var(--cyan); }
+.opt.selected .opt-radio::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--cyan);
+}
+.opt-body { flex: 1; }
+.opt-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.opt-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ====== PJE PASTE ====== */
+.pje-paste {
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.pje-paste textarea {
+  background: var(--bg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  min-height: 130px;
+  line-height: 1.6;
+}
+.pje-paste .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pje-paste button {
+  background: var(--cyan-dim);
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  color: var(--bg);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.pje-paste button:hover { background: var(--cyan); }
+.pje-paste button.secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+.pje-paste button.secondary:hover {
+  border-color: var(--cyan-dim);
+  color: var(--cyan-dim);
+}
+.pje-paste .status {
+  font-size: 12px;
+  color: var(--muted-soft);
+  font-family: ui-monospace, monospace;
+}
+.pje-paste .status.success { color: var(--cyan-dim); }
+.pje-paste .status.error { color: var(--danger); }
+
+.manual-fields {
+  display: none;
+}
+.manual-fields.show { display: block; }
+
+/* ====== VERBA / IMPUGNACAO CARDS ====== */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  position: relative;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.card-title {
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--cyan-dim);
+  font-weight: 700;
+}
+.card-remove {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 9px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.card-remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ====== ADD BUTTON ====== */
+.add-btn {
+  width: 100%;
+  background: transparent;
+  border: 2px dashed var(--border-strong);
+  border-radius: 12px;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.add-btn:hover {
+  border-color: var(--cyan-dim);
+  color: var(--cyan-dim);
+}
+
+/* ====== UPLOAD IMAGEM ====== */
+.upload-zone {
+  background: var(--surface2);
+  border: 2px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 8px;
+}
+.upload-zone:hover {
+  border-color: var(--cyan-dim);
+  background: var(--surface);
+}
+.upload-zone.has-image {
+  border-style: solid;
+  border-color: var(--cyan-dim);
+  padding: 8px;
+}
+.upload-zone input[type="file"] { display: none; }
+.upload-zone .upload-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+  opacity: 0.6;
+}
+.upload-zone .upload-text {
+  font-size: 13px;
+  color: var(--text);
+}
+.upload-zone .upload-hint {
+  font-size: 11px;
+  color: var(--muted-soft);
+  margin-top: 4px;
+}
+.upload-preview {
+  display: none;
+  position: relative;
+}
+.upload-zone.has-image .upload-preview { display: block; }
+.upload-zone.has-image .upload-empty { display: none; }
+.upload-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 6px;
+  display: block;
+  margin: 0 auto;
+}
+.upload-preview .remove-img {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(7, 11, 11, 0.9);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ====== NAV BUTTONS ====== */
+.nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.btn {
+  flex: 1;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn:hover { border-color: var(--cyan-dim); }
+.btn.primary {
+  background: var(--cyan);
+  color: var(--bg);
+  border-color: var(--cyan);
+}
+.btn.primary:hover {
+  background: var(--cyan-dim);
+  border-color: var(--cyan-dim);
+}
+.btn.primary:disabled {
+  background: var(--border);
+  color: var(--muted-soft);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.btn.secondary { flex: 0 0 auto; }
+.btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+  flex: 0 0 auto;
+}
+.btn.danger:hover {
+  background: rgba(255, 107, 107, 0.1);
+}
+
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+
+/* ====== HELP LINK / MODAL ====== */
+.header-help {
+  position: absolute;
+  top: 24px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.header-help:hover {
+  border-color: var(--cyan);
+  background: var(--surface2);
+  color: var(--cyan);
+}
+.header-help .icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cyan-dim);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.header-help:hover .icon { background: var(--cyan); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  max-width: 680px;
+  width: 100%;
+  margin: auto 0;
+}
+.modal-header {
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+.modal-close {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--muted);
+  font-family: inherit;
+}
+.modal-close:hover { border-color: var(--danger); color: var(--danger); }
+.modal-body {
+  padding: 18px 22px 24px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.modal-body p { margin-bottom: 12px; }
+.modal-body strong { color: var(--cyan); }
+.modal-body ol { margin-left: 18px; margin-bottom: 12px; }
+.modal-body li { margin-bottom: 6px; }
+
+/* MOBILE */
+@media (max-width: 600px) {
+  .step h2 { font-size: 19px; }
+  .header h1 { font-size: 16px; }
+  .row { flex-direction: column; }
+  .header-help { font-size: 11px; padding: 5px 10px; }
+  .header-help .icon { width: 14px; height: 14px; font-size: 10px; }
+}
+
+/* ====== CHECKBOX ====== */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 12px;
+  user-select: none;
+}
+.checkbox-row:hover { border-color: var(--border-strong); }
+.checkbox-row.checked {
+  border-color: var(--cyan-dim);
+  background: var(--surface);
+}
+.checkbox-row .check-box {
+  width: 18px; height: 18px;
+  border-radius: 4px;
+  border: 2px solid var(--border-strong);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.checkbox-row.checked .check-box {
+  border-color: var(--cyan);
+  background: var(--cyan);
+}
+.checkbox-row.checked .check-box::after {
+  content: '✓';
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 700;
+}
+.checkbox-row .check-label {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Card "desabilitado" quando não-aplica está marcado */
+.card.disabled,
+.field.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.card.disabled textarea,
+.card.disabled input,
+.field.disabled input,
+.field.disabled textarea {
+  background: var(--bg);
+}
+
+/* Section header bonita */
+.section-h {
+  font-size: 13px;
+  color: var(--cyan-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 32px 0 12px;
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+}
+
+/* ====== PROMPT BLOCKS (modal "Como funciona") ====== */
+.prompt-block {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--cyan-dim);
+  border-radius: 4px 8px 8px 4px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.prompt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.prompt-label {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--cyan-dim);
+  font-weight: 700;
+}
+.prompt-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin-bottom: 8px;
+}
+.prompt-text {
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  line-height: 1.6;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+}
+.copy-btn {
+  background: var(--cyan-dim);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--bg);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.copy-btn:hover { background: var(--cyan); }
+.copy-btn.copied { background: var(--success); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <h1>Gerador de Parecer Técnico</h1>
+    <div class="sub">Liquidação de Sentença Trabalhista</div>
+    <div class="autosave" id="autosave"><span class="dot"></span> rascunho não iniciado</div>
+    <button class="header-help" onclick="openModal('help')" title="Como funciona">
+      <span class="icon">?</span>
+      <span>Como funciona</span>
+    </button>
+  </div>
+
+  <!-- Banner de continuação -->
+  <div class="continue-banner" id="continueBanner">
+    <h3>📋 Você tem um parecer em andamento</h3>
+    <p id="continueMeta">Iniciado em ...</p>
+    <div class="btns">
+      <button class="primary" onclick="continueDraft()">Continuar de onde parei</button>
+      <button onclick="discardDraft()">Começar novo</button>
+    </div>
+  </div>
+
+  <div class="stepper" id="stepper"></div>
+  <div class="step-meta" id="stepMeta">PASSO 1 DE 5</div>
+
+  <!-- ============================================== -->
+  <!-- PASSO 1 — TIPO DE PARECER                      -->
+  <!-- ============================================== -->
+  <div class="step active" data-step="1">
+    <h2>Como você quer começar?</h2>
+    <p class="lead">Você pode emitir o parecer com ou sem impugnação aos cálculos do reclamante.</p>
+
+    <div class="teach">
+      <span class="label">Decisão estratégica</span>
+      Se ainda não tem os cálculos do reclamante em mãos (ou se prefere esperar), comece <strong>apenas pelo parecer</strong>. 
+      Você pode voltar depois e adicionar a impugnação — o app salva tudo automaticamente.
+    </div>
+
+    <div class="options" id="opt_modo">
+      <label class="opt selected" data-value="completo">
+        <span class="opt-radio"></span>
+        <div class="opt-body">
+          <div class="opt-title">Parecer COMPLETO</div>
+          <div class="opt-desc">Análise técnica da sentença + impugnações aos cálculos do reclamante. Use quando já tem a planilha do reclamante.</div>
+        </div>
+      </label>
+      <label class="opt" data-value="parecer">
+        <span class="opt-radio"></span>
+        <div class="opt-body">
+          <div class="opt-title">Apenas o PARECER</div>
+          <div class="opt-desc">Só análise técnica da sentença, sem impugnação. Você pode adicionar a impugnação depois — o app guarda o rascunho.</div>
+        </div>
+      </label>
+    </div>
+
+    <div class="nav">
+      <button class="btn primary" onclick="nextStep()">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- PASSO 2 — DADOS PROCESSUAIS                    -->
+  <!-- ============================================== -->
+  <div class="step" data-step="2">
+    <h2>Dados do processo</h2>
+    <p class="lead">Cole o cabeçalho do PJe no campo abaixo — o app extrai os dados. Ou clique em "preencher manualmente" se preferir.</p>
+
+    <div class="pje-paste">
+      <label style="font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; font-family: ui-monospace, monospace; letter-spacing: 0.5px; text-transform: uppercase;">Cabeçalho do PJe (texto cru)</label>
+      <textarea id="pje_raw" placeholder="Cole aqui o cabeçalho do processo do PJe.&#10;Exemplo:&#10;Poder Judiciário&#10;Justiça do Trabalho&#10;Tribunal Regional do Trabalho da 1ª Região&#10;Ação Trabalhista - Rito Ordinário&#10;0101220-40.2025.5.01.0025&#10;..."></textarea>
+      <div class="actions">
+        <button onclick="extractPJe()">Extrair dados</button>
+        <button class="secondary" onclick="toggleManual()">Preencher manualmente</button>
+        <span class="status" id="pje_status"></span>
+      </div>
+    </div>
+
+    <div class="manual-fields" id="manual_fields">
+      <h3 style="font-size: 13px; color: var(--cyan-dim); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 12px; font-family: ui-monospace, monospace;">Dados Processuais</h3>
+
+      <div class="row">
+        <div class="field" id="f_autos">
+          <label>Autos principais</label>
+          <input type="text" id="autos" placeholder="0001234-56.2024.5.01.0001">
+        </div>
+        <div class="field" id="f_tipo_acao">
+          <label>Tipo de ação</label>
+          <input type="text" id="tipo_acao" placeholder="Rito Ordinário">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" id="f_juizo">
+          <label>Juízo / Vara</label>
+          <input type="text" id="juizo" placeholder="5ª VT/RJ">
+        </div>
+        <div class="field" id="f_orgao">
+          <label>Órgão julgador</label>
+          <input type="text" id="orgao" placeholder="Tribunal Regional do Trabalho da 1ª Região">
+        </div>
+      </div>
+
+      <div class="field" id="f_reclamante">
+        <label>Reclamante</label>
+        <input type="text" id="reclamante" placeholder="João Silva">
+      </div>
+
+      <div class="field" id="f_reclamada">
+        <label>Reclamada</label>
+        <input type="text" id="reclamada" placeholder="Padaria dos Irmãos Ltda">
+      </div>
+
+      <div class="field" id="f_ajuizamento">
+        <label>Data de ajuizamento</label>
+        <input type="text" id="ajuizamento" placeholder="DD/MM/AAAA">
+      </div>
+
+      <h3 style="font-size: 13px; color: var(--cyan-dim); text-transform: uppercase; letter-spacing: 1px; margin: 24px 0 12px; font-family: ui-monospace, monospace;">Dados Contratuais</h3>
+
+      <div class="row">
+        <div class="field">
+          <label>Admissão</label>
+          <input type="text" id="admissao" placeholder="DD/MM/AAAA">
+        </div>
+        <div class="field">
+          <label>Rescisão</label>
+          <input type="text" id="rescisao" placeholder="DD/MM/AAAA (deixe vazio se sem rescisão)">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Modalidade de rescisão</label>
+        <input type="text" id="modalidade" placeholder="Dispensa sem justa causa">
+      </div>
+
+      <h3 style="font-size: 13px; color: var(--cyan-dim); text-transform: uppercase; letter-spacing: 1px; margin: 24px 0 12px; font-family: ui-monospace, monospace;">Prescrição</h3>
+
+      <div class="checkbox-row" id="prescricao_check_row" onclick="togglePrescricao()">
+        <span class="check-box"></span>
+        <span class="check-label">Não há prescrição a observar (contrato dentro do quinquênio)</span>
+      </div>
+
+      <div class="field" id="prescricao_field">
+        <label>Marco prescricional</label>
+        <input type="text" id="prescricao_marco" placeholder="DD/MM/AAAA — parcelas anteriores a esta data ficam prescritas">
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="btn secondary" onclick="prevStep()">← Voltar</button>
+      <button class="btn primary" onclick="nextStep()">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- PASSO 3 — VERBAS DEFERIDAS                     -->
+  <!-- ============================================== -->
+  <div class="step" data-step="3">
+    <h2>Pedidos deferidos</h2>
+    <p class="lead">Adicione cada verba deferida pela sentença. Para cada uma: título, trecho da sentença e resumo por tópicos.</p>
+
+    <div class="teach">
+      <span class="label">Dica do oráculo</span>
+      Para cada verba, copie o trecho exato da sentença (a parte que diz "deferiu", "condeno", "fixo"). 
+      Os tópicos resumem os <strong>parâmetros vinculantes</strong>: percentual, base de cálculo, reflexos, divisor, etc.
+    </div>
+
+    <div id="verbas_container"></div>
+
+    <button class="add-btn" onclick="addVerba()">+ Adicionar verba</button>
+
+    <h3 class="section-h">Atualização Monetária e Juros</h3>
+
+    <div class="card">
+      <div class="field">
+        <label>Texto explicativo do regime</label>
+        <textarea id="atualizacao_texto" rows="3" placeholder="Ex: Para fins de cálculo, a sentença fixou um regime misto, em três fases: pré-judicial (IPCA-E + TRD), do ajuizamento até DD/MM (SELIC única) e a partir daí (IPCA-E + juros SELIC-IPCA-E)."></textarea>
+      </div>
+      <div class="field">
+        <label>Tópicos resumidos (um por linha)</label>
+        <textarea id="atualizacao_topicos" rows="6" placeholder="Fase pré-judicial: IPCA-E + TRD&#10;Do ajuizamento até DD/MM/AAAA: SELIC única&#10;De DD/MM/AAAA em diante: IPCA-E como correção + juros &quot;SELIC – IPCA-E&quot;&#10;Juros incidem sobre o valor bruto (Súmula 200 do TST)"></textarea>
+        <div class="hint">Cada linha vira um bullet no parecer. Adicione quantos tópicos precisar.</div>
+      </div>
+    </div>
+
+    <h3 class="section-h">Custas Processuais</h3>
+
+    <div class="card">
+      <div class="field">
+        <label>Trecho da sentença (citação literal)</label>
+        <textarea id="custas_sentenca" rows="2" placeholder='Ex: "Custas processuais pela reclamada, calculadas em 2% sobre o valor da condenação, no importe de R$ XXX,XX."'></textarea>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Percentual</label>
+          <input type="text" id="custas_percentual" placeholder="2%">
+        </div>
+        <div class="field">
+          <label>Responsável</label>
+          <input type="text" id="custas_responsavel" placeholder="Reclamada">
+        </div>
+      </div>
+      <div class="field">
+        <label>Base de cálculo</label>
+        <input type="text" id="custas_base" placeholder="Valor da condenação">
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="btn secondary" onclick="prevStep()">← Voltar</button>
+      <button class="btn primary" onclick="nextStep()">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- PASSO 4 — IMPUGNAÇÕES                          -->
+  <!-- ============================================== -->
+  <div class="step" data-step="4">
+    <h2>Impugnações sugeridas</h2>
+    <p class="lead">Para cada erro identificado nos cálculos do reclamante: print do erro, trecho da sentença que prova e argumento técnico.</p>
+
+    <div class="teach">
+      <span class="label">3 elementos por impugnação</span>
+      <strong>1. Print:</strong> imagem do trecho dos cálculos do reclamante onde está o erro.
+      <strong>2. Sentença:</strong> citação da sentença que comprova o erro.
+      <strong>3. Argumento:</strong> texto técnico que conclui pela impugnação (você pode usar o oráculo para gerar).
+    </div>
+
+    <div id="impugnacoes_container"></div>
+
+    <button class="add-btn" onclick="addImpugnacao()">+ Adicionar impugnação</button>
+
+    <div class="nav">
+      <button class="btn secondary" onclick="prevStep()">← Voltar</button>
+      <button class="btn primary" onclick="nextStep()">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- PASSO 5 — FINALIZAR                            -->
+  <!-- ============================================== -->
+  <div class="step" data-step="5">
+    <h2>Finalizar parecer</h2>
+    <p class="lead">Dados do perito que assina o parecer.</p>
+
+    <div class="field">
+      <label>Seu nome completo</label>
+      <input type="text" id="perito_nome" placeholder="Ex: João da Silva">
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>Documento (CPF/CRA)</label>
+        <input type="text" id="perito_doc" placeholder="000.000.000-00">
+      </div>
+      <div class="field">
+        <label>Cidade</label>
+        <input type="text" id="perito_cidade" placeholder="Rio de Janeiro">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Data do parecer</label>
+      <input type="date" id="perito_data">
+    </div>
+
+    <div class="alert warning">
+      <span class="label">Lembrete</span>
+      Antes de assinar, revise o DOCX gerado. O app monta a estrutura, mas o conteúdo é sua responsabilidade técnica.
+    </div>
+
+    <div class="nav">
+      <button class="btn secondary" onclick="prevStep()">← Voltar</button>
+      <button class="btn danger" onclick="resetAll()">Limpar tudo</button>
+      <button class="btn primary" id="btn_download" onclick="generateDOCX()">↓ Baixar DOCX</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ====== MODAL: COMO FUNCIONA ====== -->
+<div class="modal-overlay" id="modal_help" onclick="closeModalIfOverlay(event, 'help')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Como funciona o app</h3>
+      <button class="modal-close" onclick="closeModal('help')">×</button>
+    </div>
+    <div class="modal-body">
+      <p>Esse app gera <strong>pareceres técnicos de liquidação de sentença trabalhista</strong> em formato DOCX, prontos para entregar ao advogado contratante.</p>
+
+      <p><strong>O fluxo do oráculo:</strong></p>
+      <ol>
+        <li>Você lê a sentença</li>
+        <li>Pede ao seu oráculo (ChatGPT, Claude ou outra IA) que extraia os pontos deferidos com a parametrização</li>
+        <li>Cola as respostas do oráculo nos campos do app</li>
+        <li>O app monta o parecer técnico formatado</li>
+      </ol>
+
+      <p><strong>5 passos:</strong></p>
+      <ol>
+        <li><strong>Início</strong> — escolhe se quer parecer só ou completo (com impugnação)</li>
+        <li><strong>Dados</strong> — cola o cabeçalho do PJe ou preenche manualmente</li>
+        <li><strong>Verbas</strong> — adiciona cada pedido deferido com sentença + tópicos. Inclui prescrição, atualização monetária e custas.</li>
+        <li><strong>Impugnações</strong> — para cada erro: print + sentença + argumento</li>
+        <li><strong>Finalizar</strong> — dados do perito e download do DOCX</li>
+      </ol>
+
+      <p><strong>Autosave:</strong> tudo é salvo no seu navegador a cada mudança. Você pode fechar e voltar depois — o app pergunta se quer continuar de onde parou.</p>
+
+      <p><strong>Privacidade:</strong> nenhum dado sai do seu computador. Tudo roda no navegador.</p>
+
+      <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
+
+      <h4 style="font-size: 14px; color: var(--cyan); margin-bottom: 10px; font-weight: 700;">📜 Prompts do Oráculo</h4>
+      <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Use esses prompts no ChatGPT, Claude ou outra IA. Cole a resposta da IA nos campos do app.</p>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <span class="prompt-label">PASSO 3 — Verbas</span>
+          <button class="copy-btn" onclick="copyPrompt('prompt-interpretacao', this)">📋 Copiar</button>
+        </div>
+        <div class="prompt-title">Interpretação de Sentença</div>
+        <div class="prompt-text" id="prompt-interpretacao">Olá Chat. Vou te enviar um capítulo do mérito de uma sentença trabalhista e você me dá um texto com: o trecho da sentença que deferiu a verba e os parâmetros, e um resumo técnico e objetivo da parametrização observada. Caso naquele capítulo a verba tenha sido indeferida, responder apenas com a palavra INDEFERIDO.</div>
+      </div>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <span class="prompt-label">PASSO 4 — Impugnações</span>
+          <button class="copy-btn" onclick="copyPrompt('prompt-impugnacao', this)">📋 Copiar</button>
+        </div>
+        <div class="prompt-title">Impugnação aos Cálculos</div>
+        <div class="prompt-text" id="prompt-impugnacao">Olá chat. Vamos impugnar os cálculos da parte Autora. Vou te dizer o que está errado e por que, e você me dá o texto completo deste tópico da impugnação. O texto tem que ser técnico e objetivo e trazer a fundamentação da coisa julgada.</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ========================
+// STATE
+// ========================
+const STORAGE_KEY = 'parecer_v1_draft';
+
+const state = {
+  currentStep: 1,
+  totalSteps: 5,
+  data: {
+    modo: 'completo', // 'completo' ou 'parecer'
+    pje_extracted: false,
+    autos: '', tipo_acao: '', juizo: '', orgao: '',
+    reclamante: '', reclamada: '', ajuizamento: '',
+    admissao: '', rescisao: '', modalidade: '',
+    verbas: [],
+    prescricao_nao_aplica: false,
+    prescricao_marco: '',
+    atualizacao_texto: '',
+    atualizacao_topicos: '',
+    custas_sentenca: '',
+    custas_percentual: '',
+    custas_responsavel: '',
+    custas_base: '',
+    impugnacoes: [],
+    perito_nome: '', perito_doc: '', perito_cidade: '',
+    perito_data: '',
+    started_at: null,
+    last_saved: null
+  }
+};
+
+// Counter pra IDs únicos de cards
+let verbaCounter = 0;
+let impugCounter = 0;
+
+// ========================
+// AUTOSAVE
+// ========================
+let saveTimeout = null;
+function autosave() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    if (!state.data.started_at) {
+      state.data.started_at = new Date().toISOString();
+    }
+    state.data.last_saved = new Date().toISOString();
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+      const auto = document.getElementById('autosave');
+      auto.classList.add('saved');
+      const t = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      auto.innerHTML = `<span class="dot"></span> rascunho salvo · ${t}`;
+    } catch (e) {
+      console.warn('Autosave falhou:', e);
+    }
+  }, 400);
+}
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    // Verificar se tem conteúdo significativo
+    const hasContent = data.reclamante || data.reclamada || data.verbas?.length > 0 || data.impugnacoes?.length > 0;
+    if (!hasContent) return false;
+    return data;
+  } catch (e) {
+    return false;
+  }
+}
+
+function showContinueBanner(draft) {
+  const banner = document.getElementById('continueBanner');
+  const meta = document.getElementById('continueMeta');
+  const started = draft.started_at ? new Date(draft.started_at) : null;
+  const dateStr = started
+    ? started.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' às ' + started.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : 'sem data';
+  const partes = [];
+  if (draft.reclamante) partes.push(`Reclamante: ${draft.reclamante}`);
+  if (draft.verbas?.length) partes.push(`${draft.verbas.length} verba(s)`);
+  if (draft.impugnacoes?.length) partes.push(`${draft.impugnacoes.length} impugnação(ões)`);
+  meta.textContent = `Iniciado em ${dateStr}${partes.length ? ' · ' + partes.join(' · ') : ''}`;
+  banner.classList.add('show');
+}
+
+function continueDraft() {
+  const draft = loadDraft();
+  if (!draft) return;
+  Object.assign(state.data, draft);
+  document.getElementById('continueBanner').classList.remove('show');
+  applyStateToUI();
+}
+
+function discardDraft() {
+  localStorage.removeItem(STORAGE_KEY);
+  document.getElementById('continueBanner').classList.remove('show');
+  state.data.started_at = null;
+}
+
+function applyStateToUI() {
+  // Modo
+  const opts = document.querySelectorAll('#opt_modo .opt');
+  opts.forEach(o => o.classList.toggle('selected', o.dataset.value === state.data.modo));
+
+  // Campos simples
+  const fields = ['autos', 'tipo_acao', 'juizo', 'orgao', 'reclamante', 'reclamada', 'ajuizamento',
+                  'admissao', 'rescisao', 'modalidade',
+                  'prescricao_marco',
+                  'atualizacao_texto', 'atualizacao_topicos',
+                  'custas_sentenca', 'custas_percentual', 'custas_responsavel', 'custas_base',
+                  'perito_nome', 'perito_doc', 'perito_cidade', 'perito_data'];
+  fields.forEach(k => {
+    const el = document.getElementById(k);
+    if (el && state.data[k] != null) el.value = state.data[k];
+  });
+
+  // Checkbox de prescrição
+  if (state.data.prescricao_nao_aplica) {
+    const row = document.getElementById('prescricao_check_row');
+    const field = document.getElementById('prescricao_field');
+    if (row) row.classList.add('checked');
+    if (field) field.classList.add('disabled');
+  }
+
+  // Mostrar manual se já tem dados
+  if (state.data.reclamante || state.data.reclamada) {
+    document.getElementById('manual_fields').classList.add('show');
+  }
+
+  // Verbas
+  const vc = document.getElementById('verbas_container');
+  vc.innerHTML = '';
+  verbaCounter = 0;
+  (state.data.verbas || []).forEach(v => addVerba(v));
+
+  // Impugnações
+  const ic = document.getElementById('impugnacoes_container');
+  ic.innerHTML = '';
+  impugCounter = 0;
+  (state.data.impugnacoes || []).forEach(i => addImpugnacao(i));
+}
+
+function collectFormData() {
+  // Campos simples
+  const fields = ['autos', 'tipo_acao', 'juizo', 'orgao', 'reclamante', 'reclamada', 'ajuizamento',
+                  'admissao', 'rescisao', 'modalidade',
+                  'prescricao_marco',
+                  'atualizacao_texto', 'atualizacao_topicos',
+                  'custas_sentenca', 'custas_percentual', 'custas_responsavel', 'custas_base',
+                  'perito_nome', 'perito_doc', 'perito_cidade', 'perito_data'];
+  fields.forEach(k => {
+    const el = document.getElementById(k);
+    if (el) state.data[k] = el.value;
+  });
+
+  // Checkbox de prescrição
+  const prescCheck = document.getElementById('prescricao_check_row');
+  if (prescCheck) state.data.prescricao_nao_aplica = prescCheck.classList.contains('checked');
+
+  // Verbas
+  state.data.verbas = [];
+  document.querySelectorAll('#verbas_container .card[data-verba-id]').forEach(card => {
+    const id = card.dataset.verbaId;
+    state.data.verbas.push({
+      titulo: card.querySelector(`#verba_titulo_${id}`).value,
+      sentenca: card.querySelector(`#verba_sentenca_${id}`).value,
+      topicos: card.querySelector(`#verba_topicos_${id}`).value
+    });
+  });
+
+  // Impugnações
+  state.data.impugnacoes = [];
+  document.querySelectorAll('#impugnacoes_container .card[data-impug-id]').forEach(card => {
+    const id = card.dataset.impugId;
+    const imgEl = card.querySelector(`#impug_img_${id}`);
+    state.data.impugnacoes.push({
+      titulo: card.querySelector(`#impug_titulo_${id}`).value,
+      sentenca: card.querySelector(`#impug_sentenca_${id}`).value,
+      argumento: card.querySelector(`#impug_argumento_${id}`).value,
+      img_data: imgEl ? imgEl.dataset.imageData || '' : '',
+      img_name: imgEl ? imgEl.dataset.imageName || '' : ''
+    });
+  });
+}
+
+// ========================
+// STEPPER & NAV
+// ========================
+function renderStepper() {
+  const stepper = document.getElementById('stepper');
+  stepper.innerHTML = '';
+  // Se modo "parecer" só, esconde passo 4 mas mantém numeração visual
+  for (let i = 1; i <= state.totalSteps; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot';
+    if (i < state.currentStep) dot.classList.add('done');
+    if (i === state.currentStep) dot.classList.add('active');
+    if (i === 4 && state.data.modo === 'parecer') dot.style.opacity = '0.3';
+    stepper.appendChild(dot);
+  }
+  document.getElementById('stepMeta').textContent = `PASSO ${state.currentStep} DE ${state.totalSteps}`;
+}
+
+function showStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.querySelector(`[data-step="${n}"]`).classList.add('active');
+  state.currentStep = n;
+  renderStepper();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function nextStep() {
+  collectFormData();
+  autosave();
+  let next = state.currentStep + 1;
+  // Pular impugnações se modo "parecer só"
+  if (next === 4 && state.data.modo === 'parecer') next = 5;
+  if (next <= state.totalSteps) showStep(next);
+}
+
+function prevStep() {
+  collectFormData();
+  autosave();
+  let prev = state.currentStep - 1;
+  if (prev === 4 && state.data.modo === 'parecer') prev = 3;
+  if (prev >= 1) showStep(prev);
+}
+
+// ========================
+// OPCAO MODO (passo 1)
+// ========================
+document.querySelectorAll('#opt_modo .opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#opt_modo .opt').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    state.data.modo = opt.dataset.value;
+    autosave();
+  });
+});
+
+// ========================
+// PARSER PJE
+// ========================
+function extractPJe() {
+  const raw = document.getElementById('pje_raw').value.trim();
+  const status = document.getElementById('pje_status');
+
+  if (!raw) {
+    status.className = 'status error';
+    status.textContent = '⚠ Cole o cabeçalho primeiro';
+    return;
+  }
+
+  const result = parsePJeText(raw);
+  const extracted = Object.entries(result).filter(([k, v]) => v).length;
+
+  if (extracted === 0) {
+    status.className = 'status error';
+    status.textContent = '⚠ Não consegui ler. Preencha manualmente abaixo.';
+    document.getElementById('manual_fields').classList.add('show');
+    return;
+  }
+
+  // Aplica os dados extraídos
+  Object.entries(result).forEach(([k, v]) => {
+    if (v) {
+      const el = document.getElementById(k);
+      if (el) el.value = v;
+      state.data[k] = v;
+    }
+  });
+
+  // Marcar campos não extraídos em amarelo
+  const expected = ['autos', 'tipo_acao', 'juizo', 'orgao', 'reclamante', 'reclamada', 'ajuizamento'];
+  expected.forEach(k => {
+    const fld = document.getElementById('f_' + k);
+    if (fld) fld.classList.toggle('unfilled', !result[k]);
+  });
+
+  // Esconde a textarea cru e mostra os campos
+  document.getElementById('manual_fields').classList.add('show');
+  state.data.pje_extracted = true;
+
+  status.className = 'status success';
+  status.textContent = `✓ Extraídos ${extracted} campos. Confira e preencha os faltantes.`;
+
+  // Some o texto cru após extração
+  setTimeout(() => {
+    document.getElementById('pje_raw').value = '';
+  }, 500);
+
+  autosave();
+}
+
+function toggleManual() {
+  document.getElementById('manual_fields').classList.add('show');
+}
+
+function parsePJeText(text) {
+  const result = {
+    autos: '', tipo_acao: '', juizo: '', orgao: '',
+    reclamante: '', reclamada: '', ajuizamento: ''
+  };
+
+  // Limpa o texto: remove linhas embaralhadas (linhas com 3+ underscores ou aleatoriedade)
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+
+  // 1. NÚMERO DO PROCESSO — formato XXXXXXX-XX.XXXX.X.XX.XXXX
+  const procRegex = /\b(\d{7}-\d{2}\.\d{4}\.\d{1,2}\.\d{2}\.\d{4})\b/;
+  for (const line of lines) {
+    const m = line.match(procRegex);
+    if (m) { result.autos = m[1]; break; }
+  }
+
+  // 2. TIPO DE AÇÃO — captura "Ação Trabalhista - Rito Ordinário" ou "CumSen" etc.
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes('rito ordinário') || lower.includes('rito sumar')) {
+      const m = line.match(/(rito\s+[A-Za-zÀ-ÿ]+)/i);
+      if (m) {
+        // Capitaliza só a primeira letra de cada palavra
+        result.tipo_acao = m[1].toLowerCase().split(' ')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+      } else {
+        result.tipo_acao = 'Rito Ordinário';
+      }
+      break;
+    }
+    if (lower.match(/^cumsen\b/) || lower.includes('cumprimento de sentença')) {
+      result.tipo_acao = 'CumSen';
+      break;
+    }
+    if (lower.match(/^execução\b/)) {
+      result.tipo_acao = 'Execução';
+      break;
+    }
+  }
+
+  // 3. ÓRGÃO JULGADOR — "Tribunal Regional do Trabalho da Xª Região"
+  for (const line of lines) {
+    if (/tribunal\s+regional\s+do\s+trabalho/i.test(line)) {
+      result.orgao = line.replace(/^.*?(tribunal)/i, '$1').trim();
+      result.orgao = result.orgao.replace(/\s+/g, ' ');
+      break;
+    }
+  }
+
+  // 4. JUÍZO/VARA — captura linha com "Vara do Trabalho"
+  for (const line of lines) {
+    if (/\d+ª\s*vara\s+do\s+trabalho/i.test(line)) {
+      const m = line.match(/(\d+ª?\s*vara\s+do\s+trabalho[^,]*)/i);
+      if (m) {
+        result.juizo = m[1].trim();
+        break;
+      }
+    }
+  }
+
+  // 4b. Se não achou juízo na linha, tenta INFERIR pelo número do processo
+  // Formato: NNNNNNN-DD.AAAA.J.TR.OOOO
+  // OOOO = código do órgão (vara). Convertemos pra "Nª Vara do Trabalho"
+  if (!result.juizo && result.autos) {
+    const m = result.autos.match(/\.(\d{4})$/);
+    if (m) {
+      const varaNum = parseInt(m[1], 10);
+      if (varaNum > 0 && varaNum < 1000) {
+        result.juizo = `${varaNum}ª Vara do Trabalho`;
+      }
+    }
+  }
+
+  // 5. RECLAMANTE — após "RECLAMANTE:" ou "EXEQUENTE:"
+  for (const line of lines) {
+    const m = line.match(/^(?:reclamante|exequente|requerente|autor)\s*:\s*(.+)$/i);
+    if (m) {
+      result.reclamante = cleanName(m[1]);
+      break;
+    }
+  }
+
+  // 6. RECLAMADA — após "RECLAMADO:" ou "EXECUTADO:"
+  for (const line of lines) {
+    const m = line.match(/^(?:reclamado|reclamada|executado|executada|requerido|réu)\s*:\s*(.+)$/i);
+    if (m) {
+      result.reclamada = cleanName(m[1]);
+      break;
+    }
+  }
+
+  // 7. DATA DE AJUIZAMENTO
+  // Padrões: "Data da Autuação: 15/09/2025", "Ajuizamento: 30/03/2024"
+  for (const line of lines) {
+    const m = line.match(/(?:data\s+da\s+autua[cç][aã]o|ajuizamento|data\s+do\s+ajuizamento)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    if (m) {
+      result.ajuizamento = m[1];
+      break;
+    }
+  }
+
+  return result;
+}
+
+function cleanName(name) {
+  // Remove caracteres estranhos e normaliza espaços
+  return name
+    .replace(/\s+/g, ' ')
+    .replace(/[^\w\s\-\.&áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]/g, '')
+    .trim();
+}
+
+// ========================
+// PRESCRIÇÃO TOGGLE
+// ========================
+function togglePrescricao() {
+  const row = document.getElementById('prescricao_check_row');
+  const field = document.getElementById('prescricao_field');
+  row.classList.toggle('checked');
+  field.classList.toggle('disabled');
+  // Se marcado "não aplica", limpar o campo do marco
+  if (row.classList.contains('checked')) {
+    const marco = document.getElementById('prescricao_marco');
+    if (marco) marco.value = '';
+  }
+  collectFormData();
+  autosave();
+}
+
+// ========================
+// VERBAS
+// ========================
+function addVerba(data = null) {
+  verbaCounter++;
+  const id = 'v' + verbaCounter;
+  const container = document.getElementById('verbas_container');
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.verbaId = id;
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="card-title">Verba ${verbaCounter}</span>
+      <button class="card-remove" onclick="removeVerba(this)">remover</button>
+    </div>
+    <div class="field">
+      <label>Título da verba</label>
+      <input type="text" id="verba_titulo_${id}" placeholder="Ex: ADICIONAL DE INSALUBRIDADE">
+    </div>
+    <div class="field">
+      <label>Trecho da sentença (citação literal)</label>
+      <textarea id="verba_sentenca_${id}" rows="4" placeholder='Ex: "Defiro o adicional de insalubridade em grau médio (20%), calculado sobre o salário mínimo, com reflexos em férias + 1/3, 13º salário, aviso prévio, saldo salarial e FGTS + 40%."'></textarea>
+    </div>
+    <div class="field">
+      <label>Resumo por tópicos (um por linha)</label>
+      <textarea id="verba_topicos_${id}" rows="5" placeholder="Pedido: procedente&#10;Grau: médio (20%)&#10;Base: salário mínimo&#10;Reflexos: férias + 1/3, 13º, aviso prévio, FGTS + 40%"></textarea>
+    </div>
+  `;
+  container.appendChild(card);
+
+  if (data) {
+    document.getElementById('verba_titulo_' + id).value = data.titulo || '';
+    document.getElementById('verba_sentenca_' + id).value = data.sentenca || '';
+    document.getElementById('verba_topicos_' + id).value = data.topicos || '';
+  }
+
+  // Hooks de autosave
+  card.querySelectorAll('input, textarea').forEach(el => {
+    el.addEventListener('input', () => { collectFormData(); autosave(); });
+  });
+}
+
+function removeVerba(btn) {
+  if (!confirm('Remover essa verba?')) return;
+  const card = btn.closest('.card');
+  card.remove();
+  collectFormData();
+  autosave();
+  // Renumera os títulos visíveis
+  document.querySelectorAll('#verbas_container .card').forEach((c, i) => {
+    c.querySelector('.card-title').textContent = `Verba ${i + 1}`;
+  });
+}
+
+// ========================
+// IMPUGNAÇÕES
+// ========================
+function addImpugnacao(data = null) {
+  impugCounter++;
+  const id = 'i' + impugCounter;
+  const container = document.getElementById('impugnacoes_container');
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.impugId = id;
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="card-title">Impugnação ${impugCounter}</span>
+      <button class="card-remove" onclick="removeImpugnacao(this)">remover</button>
+    </div>
+    <div class="field">
+      <label>Título da impugnação</label>
+      <input type="text" id="impug_titulo_${id}" placeholder="Ex: DA MULTA DO ART. 467 DA CLT">
+    </div>
+    <div class="field">
+      <label>Print do erro (imagem PNG/JPG)</label>
+      <label class="upload-zone" data-img-id="${id}" id="upload_zone_${id}">
+        <input type="file" id="impug_img_${id}" accept="image/png,image/jpeg,image/jpg" onchange="handleImageUpload(this)">
+        <div class="upload-empty">
+          <div class="upload-icon">📎</div>
+          <div class="upload-text">Clique para subir imagem</div>
+          <div class="upload-hint">PNG ou JPG · até ~3MB recomendado</div>
+        </div>
+        <div class="upload-preview">
+          <img id="img_preview_${id}" src="" alt="Preview">
+          <button class="remove-img" onclick="removeImage(event, '${id}')">remover</button>
+        </div>
+      </label>
+    </div>
+    <div class="field">
+      <label>Trecho da sentença que prova o erro</label>
+      <textarea id="impug_sentenca_${id}" rows="3" placeholder='Ex: "Por outro lado, indevida a multa do art. 467 da CLT, pois ao tempo da primeira audiência não havia parcelas rescisórias incontroversas..."'></textarea>
+    </div>
+    <div class="field">
+      <label>Argumento técnico (resposta do oráculo / texto da impugnação)</label>
+      <textarea id="impug_argumento_${id}" rows="5" placeholder="Ex: A planilha apresentada pelo reclamante incluiu indevidamente a multa do art. 467 da CLT, em flagrante desconformidade com a coisa julgada. Não há título executivo que ampare a inclusão dessa parcela..."></textarea>
+    </div>
+  `;
+  container.appendChild(card);
+
+  if (data) {
+    document.getElementById('impug_titulo_' + id).value = data.titulo || '';
+    document.getElementById('impug_sentenca_' + id).value = data.sentenca || '';
+    document.getElementById('impug_argumento_' + id).value = data.argumento || '';
+    if (data.img_data) {
+      const inputEl = document.getElementById('impug_img_' + id);
+      inputEl.dataset.imageData = data.img_data;
+      inputEl.dataset.imageName = data.img_name || '';
+      const previewImg = document.getElementById('img_preview_' + id);
+      previewImg.src = data.img_data;
+      document.getElementById('upload_zone_' + id).classList.add('has-image');
+    }
+  }
+
+  // Hooks de autosave
+  card.querySelectorAll('input[type="text"], textarea').forEach(el => {
+    el.addEventListener('input', () => { collectFormData(); autosave(); });
+  });
+}
+
+function removeImpugnacao(btn) {
+  if (!confirm('Remover essa impugnação?')) return;
+  const card = btn.closest('.card');
+  card.remove();
+  collectFormData();
+  autosave();
+  document.querySelectorAll('#impugnacoes_container .card').forEach((c, i) => {
+    c.querySelector('.card-title').textContent = `Impugnação ${i + 1}`;
+  });
+}
+
+function handleImageUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Imagem muito grande. Use uma imagem menor que 5MB.');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const id = input.id.replace('impug_img_', '');
+    const dataUrl = e.target.result;
+    input.dataset.imageData = dataUrl;
+    input.dataset.imageName = file.name;
+    document.getElementById('img_preview_' + id).src = dataUrl;
+    document.getElementById('upload_zone_' + id).classList.add('has-image');
+    collectFormData();
+    autosave();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(event, id) {
+  event.preventDefault();
+  event.stopPropagation();
+  const input = document.getElementById('impug_img_' + id);
+  input.value = '';
+  delete input.dataset.imageData;
+  delete input.dataset.imageName;
+  document.getElementById('upload_zone_' + id).classList.remove('has-image');
+  collectFormData();
+  autosave();
+}
+
+// ========================
+// MODAIS
+// ========================
+function openModal(name) {
+  document.getElementById('modal_' + name).classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(name) {
+  document.getElementById('modal_' + name).classList.remove('show');
+  document.body.style.overflow = '';
+}
+function closeModalIfOverlay(event, name) {
+  if (event.target === event.currentTarget) closeModal(name);
+}
+
+function copyPrompt(elementId, btn) {
+  const text = document.getElementById(elementId).textContent;
+  const onSuccess = () => {
+    const original = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 2000);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(onSuccess).catch(() => fallbackCopy(text, onSuccess));
+  } else {
+    fallbackCopy(text, onSuccess);
+  }
+}
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.show').forEach(m => {
+      m.classList.remove('show');
+      document.body.style.overflow = '';
+    });
+  }
+});
+
+// ========================
+// RESET / DOWNLOAD
+// ========================
+function resetAll() {
+  if (!confirm('Apagar TUDO e começar de novo? Essa ação não pode ser desfeita.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+async function generateDOCX() {
+  collectFormData();
+  // Validação mínima
+  if (!state.data.reclamante || !state.data.reclamada) {
+    alert('Preencha pelo menos Reclamante e Reclamada (passo 2).');
+    showStep(2);
+    return;
+  }
+  if (!state.data.verbas.length) {
+    alert('Adicione pelo menos uma verba (passo 3).');
+    showStep(3);
+    return;
+  }
+  if (!state.data.perito_nome) {
+    alert('Preencha o nome do perito (passo 5).');
+    return;
+  }
+
+  const btn = document.getElementById('btn_download');
+  btn.disabled = true;
+  btn.textContent = 'Gerando...';
+
+  try {
+    const blob = await buildDocxBlob(state.data);
+    const safeName = (state.data.reclamante || 'parecer')
+      .replace(/[^\w\sÀ-ÿ-]/g, '').replace(/\s+/g, '_').slice(0, 60);
+    const filename = `Parecer_Tecnico_${safeName}.docx`;
+    saveAs(blob, filename);
+    btn.disabled = false;
+    btn.textContent = '↓ Baixar DOCX';
+  } catch (e) {
+    console.error(e);
+    alert('Erro ao gerar DOCX: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '↓ Baixar DOCX';
+  }
+}
+
+// ========================
+// GERAÇÃO DE DOCX — formato exato do modelo do perito
+// (cabeçalhos azul-escuro #202050, blocos cinza #E7E6E6, Aptos 10pt)
+// ========================
+
+// Cores e tamanhos do modelo
+const COR_HEADER = '202050';
+const COR_HEADER_BORDA = '44546A';
+const COR_CINZA = 'E7E6E6';
+const COR_PRETO = '000000';
+const COR_BRANCO = 'FFFFFF';
+const FONTE = 'Aptos';
+
+// Helper: TextRun padrão Aptos 10pt
+function tr(text, opts = {}) {
+  return new docx.TextRun({
+    text: text || '',
+    font: FONTE,
+    size: opts.size || 20, // 10pt
+    bold: opts.bold || false,
+    italics: opts.italics || false,
+    color: opts.color || COR_PRETO,
+  });
+}
+
+// Header de seção (azul escuro com texto branco)
+function headerSecao(titulo) {
+  return new docx.Paragraph({
+    spacing: { before: 120, after: 120 },
+    alignment: docx.AlignmentType.LEFT,
+    border: {
+      top: { style: 'single', size: 4, color: COR_HEADER_BORDA, space: 1 },
+      bottom: { style: 'single', size: 4, color: COR_HEADER_BORDA, space: 1 },
+      left: { style: 'single', size: 4, color: COR_HEADER_BORDA, space: 4 },
+      right: { style: 'single', size: 4, color: COR_HEADER_BORDA, space: 4 },
+    },
+    shading: { type: docx.ShadingType.CLEAR, color: 'auto', fill: COR_HEADER },
+    children: [tr(titulo, { bold: true, color: COR_BRANCO })],
+  });
+}
+
+// Parágrafo vazio separador
+function paragrafoVazio() {
+  return new docx.Paragraph({
+    indent: { firstLine: 851 },
+    children: [],
+  });
+}
+
+// Parágrafo normal (texto corrido com recuo de primeira linha)
+function paragrafoNormal(texto) {
+  return new docx.Paragraph({
+    indent: { firstLine: 851 },
+    alignment: docx.AlignmentType.JUSTIFIED,
+    spacing: { line: 360, lineRule: docx.LineRuleType.AUTO },
+    children: [tr(texto)],
+  });
+}
+
+// Item numerado (verba deferida) — usa numbering "verbas"
+function itemVerba(titulo) {
+  return new docx.Paragraph({
+    numbering: { reference: 'verbas', level: 0 },
+    children: [tr(titulo, { bold: true })],
+  });
+}
+
+// Bloco de citação cinza — header (SENTENÇA / PETIÇÃO INICIAL / ACÓRDÃO)
+function blocoCitacaoHeader(titulo) {
+  return new docx.Paragraph({
+    indent: { left: 1701, firstLine: 709 },
+    border: {
+      top: { style: 'single', size: 4, color: COR_CINZA, space: 1 },
+      bottom: { style: 'single', size: 4, color: COR_CINZA, space: 1 },
+      left: { style: 'single', size: 4, color: COR_CINZA, space: 4 },
+      right: { style: 'single', size: 4, color: COR_CINZA, space: 4 },
+    },
+    shading: { type: docx.ShadingType.CLEAR, color: 'auto', fill: COR_CINZA },
+    children: [tr(titulo, { bold: true, italics: true, size: 18 })], // 9pt
+  });
+}
+
+// Bloco de citação cinza — texto (italic, sem bold)
+function blocoCitacaoTexto(texto) {
+  // Quebra em parágrafos por \n preservando estilo cinza em cada um
+  const linhas = (texto || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (linhas.length === 0) linhas.push('');
+  return linhas.map(linha => new docx.Paragraph({
+    indent: { left: 1701, firstLine: 709 },
+    alignment: docx.AlignmentType.JUSTIFIED,
+    border: {
+      top: { style: 'single', size: 4, color: COR_CINZA, space: 1 },
+      bottom: { style: 'single', size: 4, color: COR_CINZA, space: 1 },
+      left: { style: 'single', size: 4, color: COR_CINZA, space: 4 },
+      right: { style: 'single', size: 4, color: COR_CINZA, space: 4 },
+    },
+    shading: { type: docx.ShadingType.CLEAR, color: 'auto', fill: COR_CINZA },
+    children: [tr(linha, { italics: true, size: 18 })],
+  }));
+}
+
+// Linha de tabela (rótulo + valor) — padrão dos blocos DADOS PROCESSUAIS / CONTRATUAIS
+function linhaTabela(rotulo, valor, larguraRotulo, larguraValor) {
+  const cellMargins = { top: 80, bottom: 80, left: 108, right: 108 };
+  return new docx.TableRow({
+    children: [
+      new docx.TableCell({
+        width: { size: larguraRotulo, type: docx.WidthType.DXA },
+        margins: cellMargins,
+        children: [new docx.Paragraph({ children: [tr(rotulo)] })],
+      }),
+      new docx.TableCell({
+        width: { size: larguraValor, type: docx.WidthType.DXA },
+        margins: cellMargins,
+        children: [new docx.Paragraph({ children: [tr(valor || '—')] })],
+      }),
+    ],
+  });
+}
+
+// Tabela de dados genérica
+function tabelaDados(linhas, larguraRotulo, larguraValor) {
+  return new docx.Table({
+    width: { size: larguraRotulo + larguraValor, type: docx.WidthType.DXA },
+    columnWidths: [larguraRotulo, larguraValor],
+    borders: {
+      top: { style: 'single', size: 4, color: 'BFBFBF' },
+      bottom: { style: 'single', size: 4, color: 'BFBFBF' },
+      left: { style: 'single', size: 4, color: 'BFBFBF' },
+      right: { style: 'single', size: 4, color: 'BFBFBF' },
+      insideHorizontal: { style: 'single', size: 4, color: 'BFBFBF' },
+      insideVertical: { style: 'single', size: 4, color: 'BFBFBF' },
+    },
+    rows: linhas.map(([r, v]) => linhaTabela(r, v, larguraRotulo, larguraValor)),
+  });
+}
+
+// Data por extenso em pt-BR
+function dataPorExtenso(isoOrEmpty) {
+  let d;
+  if (isoOrEmpty) {
+    const partes = isoOrEmpty.split('-');
+    d = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+  } else {
+    d = new Date();
+  }
+  const meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+// Calcula prescrição (5 anos antes do ajuizamento) caso não desligada
+function prescricaoLabel(data) {
+  if (data.prescricao_nao_aplica) return 'Não se aplica';
+  if (data.prescricao_marco) return data.prescricao_marco;
+  if (data.ajuizamento) {
+    const partes = data.ajuizamento.split('-');
+    if (partes.length === 3) {
+      const dt = new Date(parseInt(partes[0]) - 5, parseInt(partes[1]) - 1, parseInt(partes[2]));
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${dt.getFullYear()}`;
+    }
+  }
+  return '—';
+}
+
+// Formata data ISO (YYYY-MM-DD) para DD/MM/YYYY
+function fmtData(iso) {
+  if (!iso) return '—';
+  const p = iso.split('-');
+  if (p.length !== 3) return iso;
+  return `${p[2]}/${p[1]}/${p[0]}`;
+}
+
+// Constrói a sequência completa de blocos do body
+function montarBody(data) {
+  const blocos = [];
+
+  // Título "PARECER TÉCNICO" centralizado, bold, fonte maior
+  blocos.push(new docx.Paragraph({
+    alignment: docx.AlignmentType.CENTER,
+    spacing: { before: 240, after: 240 },
+    children: [new docx.TextRun({
+      text: 'PARECER TÉCNICO',
+      font: FONTE, bold: true, size: 32, color: COR_HEADER,
+    })],
+  }));
+
+  // ===== DADOS PROCESSUAIS =====
+  blocos.push(headerSecao('DADOS PROCESSUAIS'));
+  const linhasProc = [
+    ['Autos principais', data.autos],
+    ['Cumprimento de sentença', data.autos],
+    ['Juízo', [data.juizo, data.orgao].filter(Boolean).join(' — ')],
+    ['Reclamante', data.reclamante],
+    ['Reclamada', data.reclamada],
+    ['Ajuizamento', fmtData(data.ajuizamento)],
+    ['Prescrição', prescricaoLabel(data)],
+  ];
+  blocos.push(tabelaDados(linhasProc, 3119, 5375));
+  blocos.push(paragrafoVazio());
+
+  // ===== DADOS CONTRATUAIS =====
+  if (data.admissao || data.rescisao || data.modalidade) {
+    blocos.push(headerSecao('DADOS CONTRATUAIS'));
+    const linhasContr = [
+      ['Admissão', fmtData(data.admissao)],
+      ['Rescisão', fmtData(data.rescisao)],
+      ['Modalidade', data.modalidade],
+    ];
+    blocos.push(tabelaDados(linhasContr, 3261, 5233));
+    blocos.push(paragrafoVazio());
+  }
+
+  // ===== DOS PEDIDOS DEFERIDOS =====
+  blocos.push(headerSecao('DOS PEDIDOS DEFERIDOS'));
+  blocos.push(paragrafoVazio());
+
+  data.verbas.forEach(v => {
+    blocos.push(itemVerba(v.titulo || 'VERBA SEM TÍTULO'));
+    if (v.sentenca && v.sentenca.trim()) {
+      blocos.push(blocoCitacaoHeader('SENTENÇA'));
+      blocoCitacaoTexto(v.sentenca).forEach(p => blocos.push(p));
+    }
+    if (v.topicos && v.topicos.trim()) {
+      blocos.push(paragrafoNormal(v.topicos));
+    }
+    blocos.push(paragrafoVazio());
+  });
+
+  // ===== ATUALIZAÇÃO MONETÁRIA (modo completo) =====
+  if (data.modo === 'completo' && (data.atualizacao_texto || data.atualizacao_topicos)) {
+    blocos.push(headerSecao('ATUALIZAÇÃO MONETÁRIA E JUROS'));
+    if (data.atualizacao_texto && data.atualizacao_texto.trim()) {
+      blocos.push(blocoCitacaoHeader('SENTENÇA'));
+      blocoCitacaoTexto(data.atualizacao_texto).forEach(p => blocos.push(p));
+    }
+    if (data.atualizacao_topicos && data.atualizacao_topicos.trim()) {
+      data.atualizacao_topicos.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(linha => {
+        blocos.push(paragrafoNormal('• ' + linha));
+      });
+    }
+    blocos.push(paragrafoVazio());
+  }
+
+  // ===== CUSTAS PROCESSUAIS (modo completo) =====
+  if (data.modo === 'completo' && (data.custas_sentenca || data.custas_percentual)) {
+    blocos.push(headerSecao('CUSTAS PROCESSUAIS'));
+    if (data.custas_sentenca && data.custas_sentenca.trim()) {
+      blocos.push(blocoCitacaoHeader('SENTENÇA'));
+      blocoCitacaoTexto(data.custas_sentenca).forEach(p => blocos.push(p));
+    }
+    const linhasCustas = [];
+    if (data.custas_percentual) linhasCustas.push(['Percentual', data.custas_percentual]);
+    if (data.custas_responsavel) linhasCustas.push(['Responsável', data.custas_responsavel]);
+    if (data.custas_base) linhasCustas.push(['Base de cálculo', data.custas_base]);
+    if (linhasCustas.length) {
+      blocos.push(tabelaDados(linhasCustas, 3119, 5375));
+    }
+    blocos.push(paragrafoVazio());
+  }
+
+  // ===== IMPUGNAÇÕES (modo completo) =====
+  if (data.modo === 'completo' && data.impugnacoes && data.impugnacoes.length) {
+    blocos.push(headerSecao('DAS IMPUGNAÇÕES'));
+    blocos.push(paragrafoVazio());
+    data.impugnacoes.forEach(i => {
+      blocos.push(new docx.Paragraph({
+        children: [tr(i.titulo || 'IMPUGNAÇÃO', { bold: true })],
+      }));
+      if (i.sentenca && i.sentenca.trim()) {
+        blocos.push(blocoCitacaoHeader('SENTENÇA / DECISÃO'));
+        blocoCitacaoTexto(i.sentenca).forEach(p => blocos.push(p));
+      }
+      if (i.argumento && i.argumento.trim()) {
+        blocos.push(paragrafoNormal(i.argumento));
+      }
+      blocos.push(paragrafoVazio());
+    });
+  }
+
+  // ===== CONCLUSÃO =====
+  blocos.push(headerSecao('CONCLUSÃO'));
+  blocos.push(paragrafoNormal(
+    'Encerrado os trabalhos, com a demonstração dos cálculos e dos critérios de apuração das verbas deferidas no julgado.'
+  ));
+  blocos.push(paragrafoVazio());
+
+  // ===== DATA =====
+  const cidade = data.perito_cidade || 'Rio de Janeiro';
+  const dataExt = dataPorExtenso(data.perito_data);
+  blocos.push(new docx.Paragraph({
+    indent: { firstLine: 851 },
+    spacing: { before: 240, after: 240 },
+    children: [tr(`${cidade}, ${dataExt}.`)],
+  }));
+  blocos.push(paragrafoVazio());
+  blocos.push(paragrafoVazio());
+
+  // ===== ASSINATURA =====
+  blocos.push(new docx.Paragraph({
+    alignment: docx.AlignmentType.CENTER,
+    children: [tr('_______________________________')],
+  }));
+  blocos.push(new docx.Paragraph({
+    alignment: docx.AlignmentType.CENTER,
+    children: [tr(data.perito_nome || 'NOME DO PERITO', { bold: true })],
+  }));
+  blocos.push(new docx.Paragraph({
+    alignment: docx.AlignmentType.CENTER,
+    children: [tr(data.perito_doc || '', { bold: true })],
+  }));
+
+  return blocos;
+}
+
+// Constrói o blob do DOCX
+async function buildDocxBlob(data) {
+  const doc = new docx.Document({
+    creator: 'Gerador de Parecer Técnico',
+    title: `Parecer Técnico — ${data.reclamante}`,
+    styles: {
+      default: {
+        document: {
+          run: { font: FONTE, size: 20 },
+          paragraph: {
+            spacing: { line: 360, lineRule: docx.LineRuleType.AUTO },
+            alignment: docx.AlignmentType.JUSTIFIED,
+          },
+        },
+      },
+    },
+    numbering: {
+      config: [{
+        reference: 'verbas',
+        levels: [{
+          level: 0,
+          format: docx.LevelFormat.DECIMAL,
+          text: '%1.',
+          alignment: docx.AlignmentType.START,
+          style: {
+            paragraph: { indent: { left: 720, hanging: 360 } },
+            run: { font: FONTE, size: 20, bold: true },
+          },
+        }],
+      }],
+    },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 }, // A4
+          margin: { top: 2410, right: 1701, bottom: 1418, left: 1701 },
+        },
+      },
+      children: montarBody(data),
+    }],
+  });
+
+  return await docx.Packer.toBlob(doc);
+}
+
+// ========================
+// INIT
+// ========================
+document.addEventListener('DOMContentLoaded', () => {
+  // Pre-popular data
+  const dataInput = document.getElementById('perito_data');
+  if (dataInput) dataInput.value = new Date().toISOString().slice(0, 10);
+
+  // Verificar rascunho salvo
+  const draft = loadDraft();
+  if (draft) {
+    showContinueBanner(draft);
+  }
+
+  // Hooks de autosave nos campos do passo 2, 3 (custas/prescrição/atualização) e 5
+  const autosaveSelectors = [
+    '#manual_fields input', '#manual_fields textarea',
+    '#prescricao_marco',
+    '#atualizacao_texto', '#atualizacao_topicos',
+    '#custas_sentenca', '#custas_percentual', '#custas_responsavel', '#custas_base',
+    '#perito_nome', '#perito_doc', '#perito_cidade', '#perito_data'
+  ];
+  document.querySelectorAll(autosaveSelectors.join(', ')).forEach(el => {
+    el.addEventListener('input', () => { collectFormData(); autosave(); });
+  });
+
+  renderStepper();
+});
+</script>
+
+</body>
+</html>
